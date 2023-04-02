@@ -1,0 +1,17 @@
+{
+  "en_US": {
+    "label": "Hello World!",
+    "prompt": "Please enter your name:",
+    "button": "OK"
+  },
+  "zh_CN": {
+    "label": "你好世界！",
+    "prompt": "请输入您的姓名：",
+    "button": "确定"
+  },
+  "fr_FR": {
+    "label": "Bonjour le monde!",
+    "prompt": "Veuillez entrer votre nom:",
+    "button": "OK"
+  }
+}

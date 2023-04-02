@@ -1,0 +1,7 @@
+line_profiler
+PyQt5
+pywinauto
+wrapt
+pillow
+pywin32
+psutil
