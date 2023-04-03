@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import ctypes
 from PyQt5.QtCore import Qt, QTimer, QSize, QLocale, QRect
 from PyQt5.QtGui import QImage, QFont, QPainter, QPen, QPixmap, QIcon
@@ -9,6 +11,7 @@ import VirtualDesktopEnhancerCore as VDE_Core
 from AppUtility import get_icon_from_hwnd
 from UWP_Utility import package_full_name_from_handle
 from WindowMatch import WindowInfo, WindowMatchConfig, WindowMatchMode
+from LP_Wrapper import lp_wrapper
 
 class CurrentWindowItem(QListWidgetItem):
     @classmethod
@@ -28,9 +31,9 @@ class CurrentWindowItem(QListWidgetItem):
         self.hwnd = self.window_info.hwnd
         self.title = self.window_info.title
         self.current_desktop_idx = self.window_info.current_desktop_idx
+        self.app_name = self.window_info.app_name
         self.pid = self.window_info.process_id
-        # if self.title in ["Calculator", "Microsoft Store", "任务管理器"]:
-        #     print(f"窗口： {self.title}")
+        self.is_UWP = self.window_info.is_UWP
 
         self.icon_img = get_icon_from_hwnd(self.hwnd)
         
@@ -38,13 +41,12 @@ class CurrentWindowItem(QListWidgetItem):
         if icon is not None:
             self.setIcon(icon)
         else:
-            print(f"未找到图标： {self.title}")
-            # app = QApplication.instance()
-            # app_icon = app.style().standardPixmap(app.style().SP_DesktopIcon)
-            # fallback_icon = QIcon()
-            # fallback_icon.addPixmap(app_icon, QIcon.Normal, QIcon.Off)
-            # self.setIcon(fallback_icon)
-
+            print(f"hwnd: {self.hwnd} 未找到图标： {self.title} - {self.app_name}")
+            app = QApplication.instance()
+            app_icon = app.style().standardPixmap(app.style().SP_DesktopIcon)
+            fallback_icon = QIcon()
+            fallback_icon.addPixmap(app_icon, QIcon.Normal, QIcon.Off)
+            self.setIcon(fallback_icon)
         self.set_current_window_text()
 
 
@@ -55,12 +57,15 @@ class CurrentWindowItem(QListWidgetItem):
         show_hwnd = True
         show_pid = True
         show_hex = True
+        show_app_name = True
 
         check_mark = "[✓]" if self.matched and show_matched_state else ""
         desktop_name = f"{self.current_desktop_idx} {get_desktop_name(self.current_desktop_idx)} - " if show_desktop_name else ""
+        app_name_text = f" - {self.app_name}" if show_app_name else ""
         hwnd_text = f" - hwnd: {self.hwnd if not show_hex else hex(self.hwnd)}" if show_hwnd else ""
         pid_text = f" - pid: {self.pid if not show_hex else hex(self.pid)}" if show_pid else ""
-        self.setText(f"{check_mark}{desktop_name}{self.title}{pid_text}{hwnd_text}")
+        is_UWP_text = " - UWP" if self.is_UWP else ""
+        self.setText(f"{check_mark}{desktop_name}{self.title}{app_name_text}{pid_text}{hwnd_text}{is_UWP_text}")
         self.setForeground(Qt.blue if self.matched else Qt.black)
 
 class MatchedWindowItem(QListWidgetItem):
@@ -149,8 +154,8 @@ class VirtualDesktopEnhancerWindow(QMainWindow):
         all_windows_list_vbox = QVBoxLayout()
         all_window_vbox.addLayout(all_windows_list_vbox)
 
-        all_windows_label = QLabel("All Windows:", self)
-        all_windows_list_vbox.addWidget(all_windows_label)
+        self.all_windows_label = QLabel("All Windows:", self)
+        all_windows_list_vbox.addWidget(self.all_windows_label)
 
         self.all_windows_list = QListWidget(self)
         all_windows_list_vbox.addWidget(self.all_windows_list)
@@ -238,25 +243,27 @@ class VirtualDesktopEnhancerWindow(QMainWindow):
         # item1 = CurrentWindowItem(False, 0x0F13069A, "测试标题1", get_icon_from_hwnd(0x0F13069A))
         # item2 = CurrentWindowItem(True, 0x0F13069A, "测试标题2", get_icon_from_hwnd(0x0F13069A))
 
-        self.init_window_list_content()
+        self.refresh_window_list_content()
         self.setWindowTitle("Virtual Desktop Enhancer")
 
         self.size = QSize(1080, 960)
 
-    def init_window_list_content(self):
+    def refresh_window_list_content(self):
         self.core.refresh_all_windows() 
+        self.all_windows_list.clear()
         for window_info in self.core.window_infos:
             item = CurrentWindowItem.from_WindowInfo(window_info)
             self.all_windows_list.addItem(item)
-
+        self.all_windows_label.setText(f"All Windows ({self.all_windows_list.count()}):")
+            
         # 测试用：把所有无图标的移动到最前面
-        for i in range(self.all_windows_list.count()):
-            item = self.all_windows_list.item(i)
-            if item.icon_img is None:
-                # print(f"item {item.title} has no icon")
-                self.all_windows_list.takeItem(i)
-                self.all_windows_list.insertItem(0, item)
-                print(f"item {item.title} with hwnd {item.hwnd} package name = {package_full_name_from_handle(item.hwnd)}")
+        # for i in range(self.all_windows_list.count()):
+        #     item = self.all_windows_list.item(i)
+        #     if item.icon_img is None:
+        #         # print(f"item {item.title} has no icon")
+        #         self.all_windows_list.takeItem(i)
+        #         self.all_windows_list.insertItem(0, item)
+        #         print(f"item {item.title} with hwnd {item.hwnd} package name = {package_full_name_from_handle(item.hwnd)}")
         
     def on_test(self):
         move_window_to_desktop(int(self.test_text_box.text(), 16), 1)
@@ -269,8 +276,10 @@ class VirtualDesktopEnhancerWindow(QMainWindow):
         print("save_config")
         # ... 将配置文件保存到磁盘。
 
+    # @lp_wrapper
     def refresh_all_windows(self):
-        pass
+        self.refresh_window_list_content()
+        # pass
         # print("refresh_all_windows")
         # ... 每隔1秒刷新“All Window”列表框。
 

@@ -8,6 +8,11 @@ import xml.etree.ElementTree as ET
 from PyQt5.QtGui import QImage
 import win32gui
 import win32process
+import psutil
+from lxml import etree
+
+
+# from AppUtility import get_app_name_from_hwnd
 
 ERROR_SUCCESS = 0x0
 ERROR_INSUFFICIENT_BUFFER = 0x7A
@@ -158,14 +163,14 @@ def package_full_name_from_handle(handle):
     length = ctypes.c_uint()
     ret_val = _get_package_full_name(handle, ctypes.byref(length), None)
     if ret_val == APPMODEL_ERROR_NO_PACKAGE:
-        print(f"package_full_name_from_handle: handle {handle:#x} has no package.")
+        # print(f"package_full_name_from_handle: handle {handle:#x} has no package.")
         return None
 
     full_name = ctypes.create_unicode_buffer(length.value + 1)
     ret_val = _get_package_full_name(handle, ctypes.byref(length), full_name)
     if ret_val != ERROR_SUCCESS:
         err =  ctypes.WinError(ctypes.get_last_error())
-        print(f"package_full_name_from_handle: error -> {str(err)}")
+        # print(f"package_full_name_from_handle: error -> {str(err)}")
         return None
 
     return full_name
@@ -306,52 +311,9 @@ def get_windows():
     _enum_windows(func, 0)
     return hwnds
 
-# 通过 UWP 的包名称获取图标，返回 QImage 对象
-def get_icon_from_UWP_package(package_name: str) -> QImage:
-    package_path = package_path_from_full_name(package_name)
-    if package_path is None:
-        raise FileNotFoundError("Package not found")
-    package_path = str(package_path.value)
-    if package_path is None:
-        raise FileNotFoundError("Package not found")
-        return None
-    # Load the AppxManifest.xml file
-    manifest_file = os.path.join(package_path, "AppxManifest.xml")
-    if manifest_file is None or not os.path.exists(manifest_file) or not os.access(manifest_file, os.R_OK):
-        raise FileNotFoundError("AppxManifest.xml not found")
-        return None
-    
-    tree = ET.parse(manifest_file)
-    root = tree.getroot()
-
-    # Find the Logo element
-    namespace = root.tag.split('}')[0] + '}'
-    logo_element = root.find(namespace + 'Properties').find(namespace + 'Logo')
-
-    # Get the relative path to the logo file
-    relative_path = logo_element.text.replace('\\', os.sep)
-
-    # Try to find the exact logo file
-    logo_file = os.path.join(package_path, relative_path)
-    if os.path.exists(logo_file) and os.access(logo_file, os.R_OK):
-        image = QImage(logo_file)
-        return image
-
-    # If the exact logo file doesn't exist, try to find a matching file
-    else:
-        logo_basename = os.path.basename(relative_path)
-        logo_dirname = os.path.dirname(relative_path)
-        for filename in os.listdir(os.path.join(package_path, logo_dirname)):
-            if filename.startswith(logo_basename.split('.')[0]) and filename.endswith('.png'):
-                logo_file = os.path.join(package_path, logo_dirname, filename)
-                if os.path.exists(logo_file) and os.access(logo_file, os.R_OK):
-                    image = QImage(logo_file)
-                    return image
-                    break
-    return None
 
 # 从窗口句柄获取UWP应用的图标
-# hwnd: 窗口句柄，但必须是真正的UWP的窗口句柄, 大多数情况下 python 能获取到的只是沙盒的窗口句柄（尽管它们各不相同，但是终会获得一致的沙盒 pid），所以这个函数不可用
+# hwnd: Core Window 的句柄，这样才能获取正确的包路径进而获取图标
 def get_icon_from_UWP_hwnd(hwnd: int, image_resize: int = 32) -> QImage:
     pid = ctypes.wintypes.DWORD()
     _get_windows_thread_process_id(
@@ -359,11 +321,92 @@ def get_icon_from_UWP_hwnd(hwnd: int, image_resize: int = 32) -> QImage:
         ctypes.byref(pid)
     )
 
+    app_name = ""
+    process = psutil.Process(pid.value)
+    if process is not None:
+        app_name = process.name()
+
     hprocess = _open_process(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
     full_name = package_full_name_from_handle(hprocess)
     if not full_name:
         return None
-    image = get_icon_from_UWP_package(full_name)
+
+    image = get_icon_from_UWP_package(full_name, app_name)
     if image is not None:
         image = image.scaled(image_resize, image_resize)
     return image
+
+# 通过 UWP 的包名称获取图标，返回 QImage 对象，优先匹配应用图标，其次包图标，因为一个包可能有多个应用，例如 Mail 和 Calendar
+def get_icon_from_UWP_package(package_name: str, app_name: str = None) -> QImage:
+    package_path = package_path_from_full_name(package_name)
+    if package_path is None:
+        raise FileNotFoundError("Package not found")
+    package_path = str(package_path.value)
+    if package_path is None:
+        raise FileNotFoundError("Package not found")
+    # Load the AppxManifest.xml file
+    manifest_file = os.path.join(package_path, "AppxManifest.xml")
+    if manifest_file is None or not os.path.exists(manifest_file) or not os.access(manifest_file, os.R_OK):
+        raise FileNotFoundError("AppxManifest.xml not found")
+                                
+    # XML 解析
+    tree = etree.parse(manifest_file)
+    root = tree.getroot()
+
+    namespace = root.nsmap[None]
+    uap_namespace = root.nsmap['uap']
+
+    apps = root.findall('{{{}}}Applications/{{{}}}Application'.format(namespace, namespace))
+    logo_file = None
+    for app in apps:
+        app_exe = app.get('Executable')
+        if app_exe and app_name and app_exe.lower() == app_name.lower():
+            logo_element = app.find('{{{}}}VisualElements'.format(uap_namespace))
+
+            if logo_element is None:
+                continue
+            # 获取最大的图标
+            # Win 10 的标准是 150 和 44，最好用 44 的，150 的有边框
+            icon_sizes = ['44', '150']
+            for size in icon_sizes:
+                if logo_element.get('Square' + size + 'x' + size + 'Logo'):
+                    relative_path = logo_element.get('Square' + size + 'x' + size + 'Logo').replace('\\', os.sep)
+                    logo_file = os.path.join(package_path, relative_path)
+                    if os.path.exists(logo_file) and os.access(logo_file, os.R_OK):
+                        break
+                    if not os.path.exists(logo_file) or not os.access(logo_file, os.R_OK):
+                        # If the exact logo file doesn't exist, try to find a matching file
+                        logo_basename = os.path.basename(relative_path)
+                        logo_dirname = os.path.dirname(relative_path)
+                        for filename in os.listdir(os.path.join(package_path, logo_dirname)):
+                            if filename.startswith(logo_basename.split('.')[0]) and filename.endswith('.png'):
+                                logo_file = os.path.join(package_path, logo_dirname, filename)
+                                if logo_file and os.path.exists(logo_file) and os.access(logo_file, os.R_OK):
+                                    break
+                    if logo_file and os.path.exists(logo_file) and os.access(logo_file, os.R_OK):
+                        break
+        if logo_file and os.path.exists(logo_file) and os.access(logo_file, os.R_OK):
+            break
+    
+    if logo_file is None:
+        logo_element = root.find(namespace + 'Properties').find(namespace + 'Logo')
+        # Get the relative path to the logo file
+        relative_path = logo_element.text.replace('\\', os.sep)
+        # Try to find the exact logo file
+        logo_file = os.path.join(package_path, relative_path)
+        if not os.path.exists(logo_file) or not os.access(logo_file, os.R_OK):
+            # If the exact logo file doesn't exist, try to find a matching file
+            logo_basename = os.path.basename(relative_path)
+            logo_dirname = os.path.dirname(relative_path)
+            for filename in os.listdir(os.path.join(package_path, logo_dirname)):
+                if filename.startswith(logo_basename.split('.')[0]) and filename.endswith('.png'):
+                    logo_file = os.path.join(package_path, logo_dirname, filename)
+                    if os.path.exists(logo_file) and os.access(logo_file, os.R_OK):
+                        break
+    
+    if logo_file and os.path.exists(logo_file) and os.access(logo_file, os.R_OK):
+        image = QImage(logo_file)
+        return image
+    
+    return None
+

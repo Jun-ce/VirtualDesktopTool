@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 from VirtualDesktopAccessor import get_current_desktop_number, get_desktop_name, move_window_to_desktop
 from typing import List
 from AppUtility import get_window_title_from_hwnd
@@ -7,6 +9,7 @@ import sys
 from PyQt5.QtWidgets import QApplication
 import pywinauto.findwindows as findwindows
 from UWP_Utility import get_windows
+from LP_Wrapper import lp_wrapper
 
 
 class VirtualDesktopEnhancerCore:
@@ -37,18 +40,20 @@ class VirtualDesktopEnhancerCore:
         self.match_configs.append(config)
         self.refresh_all_windows()
 
+    # @lp_wrapper
     def refresh_all_windows(self):
+        kwargs = {}
+        kwargs['enabled_only'] = GLOBAL_MATCH_CONFIG_ENABLED_ONLY
+        kwargs['visible_only'] = GLOBAL_MATCH_CONFIG_VISIBLE_ONLY
+        kwargs['top_level_only'] = GLOBAL_MATCH_CONFIG_TOP_LEVEL_ONLY
+        hwnds = findwindows.find_windows(**kwargs)
 
         # 寻找所有窗口
-        # kwargs = {}
-        # kwargs['enabled_only'] = GLOBAL_MATCH_CONFIG_ENABLED_ONLY
-        # kwargs['visible_only'] = GLOBAL_MATCH_CONFIG_VISIBLE_ONLY
-        # kwargs['top_level_only'] = GLOBAL_MATCH_CONFIG_TOP_LEVEL_ONLY
-        # hwnds = findwindows.find_windows(**kwargs)
+        # hwnds = get_windows()
 
-        hwnds = get_windows()
-
-        raw_window_infos = [WindowInfo(hwnd) for hwnd in hwnds]
+        raw_window_infos = []
+        for hwnd in hwnds:
+            raw_window_infos.append(WindowInfo(hwnd))
         self.window_infos = [info for info in raw_window_infos if info.valid]
 
         # 设置窗口的匹配状态

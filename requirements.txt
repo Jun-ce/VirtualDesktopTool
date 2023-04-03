@@ -5,3 +5,4 @@ wrapt
 pillow
 pywin32
 psutil
+lxml

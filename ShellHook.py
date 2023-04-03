@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import win32api
 import ctypes
 from ctypes import wintypes

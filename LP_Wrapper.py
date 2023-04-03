@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import wrapt
 from line_profiler import LineProfiler
 
