@@ -230,13 +230,16 @@ def get_UWP_core_hwnd(hwnd: int) -> int:
     if(hwnd == 0):
         return 0
     core_hwnd = 0
-    if win32gui.GetClassName(hwnd) == "Windows.UI.Core.CoreWindow":  # 如果 UWP 应用被最小化或已经处于别的虚拟桌面，则顶层窗口就是 CoreWindow 的句柄
-        core_hwnd = hwnd
-    elif win32gui.GetClassName(hwnd) == "ApplicationFrameWindow":  # 如果 UWP 应用没有被最小化，则顶层窗口是 ApplicationFrameWindow 的句柄
-        core_hwnd = win32gui.FindWindowEx(hwnd, 0, "Windows.UI.Core.CoreWindow", None)
-        if not core_hwnd:
-            # print(f"在沙盒中找不到 UWP 的 CoreWindow: {hwnd}，可能 UWP 应用已经被最小化或已经处于别的虚拟桌面")  # 这时候一定会存在一个直接就是 CoreWindow 的句柄，移动它就行了
-            return 0
+    try:
+        if win32gui.GetClassName(hwnd) == "Windows.UI.Core.CoreWindow":  # 如果 UWP 应用被最小化或已经处于别的虚拟桌面，则顶层窗口就是 CoreWindow 的句柄
+            core_hwnd = hwnd
+        elif win32gui.GetClassName(hwnd) == "ApplicationFrameWindow":  # 如果 UWP 应用没有被最小化，则顶层窗口是 ApplicationFrameWindow 的句柄
+            core_hwnd = win32gui.FindWindowEx(hwnd, 0, "Windows.UI.Core.CoreWindow", None)
+            if not core_hwnd:
+                # print(f"在沙盒中找不到 UWP 的 CoreWindow: {hwnd}，可能 UWP 应用已经被最小化或已经处于别的虚拟桌面")  # 这时候一定会存在一个直接就是 CoreWindow 的句柄，移动它就行了
+                return 0
+    except Exception as e:
+        return 0
     return core_hwnd
 
 # 获取 UWP 的 CoreWindow 的 PID
