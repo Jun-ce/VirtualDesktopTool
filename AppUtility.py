@@ -87,8 +87,12 @@ def get_exe_path_from_hwnd(hwnd: int) -> str:
     pid = win32process.GetWindowThreadProcessId(hwnd)[1]
     if pid is None or pid <= 0:
         return None
-    process = psutil.Process(pid)
-    exe_path = process.exe()
+    try:
+        process = psutil.Process(pid)
+        exe_path = process.exe()
+    except Exception as excep:
+        print(f'{hwnd} - 获取 exe 文件路径失败，{excep}')
+        return None
     return exe_path
     # for proc in psutil.process_iter(['pid', 'name', 'exe']):
     #     if proc.info['pid'] == pid:
