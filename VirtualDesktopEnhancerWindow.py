@@ -198,7 +198,7 @@ class VirtualDesktopEnhancerWindow(QMainWindow):
         all_window_vbox.addLayout(refresh_all_windows_btn_Hbox)
 
         self.refresh_all_windows_btn = QPushButton("Refresh", self)
-        self.refresh_all_windows_btn.clicked.connect(self.refresh_all_windows)
+        self.refresh_all_windows_btn.clicked.connect(self.on_refresh_button_clicked)
         refresh_all_windows_btn_Hbox.addWidget(self.refresh_all_windows_btn)
         
         add_window_btn_Hbox = QHBoxLayout()
@@ -461,7 +461,7 @@ class VirtualDesktopEnhancerWindow(QMainWindow):
         
         # 创建恢复窗口的操作
         restore_action = QAction("Restore", self)
-        restore_action.triggered.connect(self.show)
+        restore_action.triggered.connect(self.restore_window)
         tray_menu.addAction(restore_action)
 
         # 创建退出程序的操作
@@ -484,8 +484,13 @@ class VirtualDesktopEnhancerWindow(QMainWindow):
 
     def on_tray_icon_activated(self, reason):
         if reason == QSystemTrayIcon.DoubleClick:
-            self.show()
-            # self.tray_icon.hide()
+            self.restore_window()
+
+    def restore_window(self):
+        self.show()
+        move_window_to_desktop(int(self.winId()), get_current_desktop_number())
+        self.showNormal()
+        self.on_refresh_button_clicked()
 
     def exit_app(self):
         print("exit_app")
@@ -543,3 +548,7 @@ class VirtualDesktopEnhancerWindow(QMainWindow):
         else:
             SHOW_HEX = False
         self.refresh_window_list_content()
+
+    def on_refresh_button_clicked(self):
+        self.refresh_window_list_content()
+        self.current_vd_label.setText(f"Current Virtual Desktop: {get_current_desktop_number()} {get_desktop_name(get_current_desktop_number())}")
