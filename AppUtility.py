@@ -208,9 +208,12 @@ def get_icon_special_case(hwnd: int, icon_resize: int = 32) -> QImage:
     if hwnd is None or hwnd <= 0:
         return None
     # 任务管理器
-    class_name = win32gui.GetClassName(hwnd)
-    if class_name == "TaskManagerWindow":
-        return get_icon_from_exe("C:\\Windows\\System32\\Taskmgr.exe", icon_resize)
+    try:
+        class_name = win32gui.GetClassName(hwnd)
+        if class_name == "TaskManagerWindow":
+            return get_icon_from_exe("C:\\Windows\\System32\\Taskmgr.exe", icon_resize)
+    except Exception as e:
+        pass
     return None
 
 # 对一般exe和UWP都适用

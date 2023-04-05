@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from VirtualDesktopAccessor import get_current_desktop_number, get_desktop_name, move_window_to_desktop
+from VirtualDesktopAccessor import *
 from typing import List
 from AppUtility import get_window_title_from_hwnd
 from WindowMatch import WindowMatchConfig, WindowInfo, WindowMatchMode, GLOBAL_MATCH_CONFIG_ENABLED_ONLY, GLOBAL_MATCH_CONFIG_VISIBLE_ONLY, GLOBAL_MATCH_CONFIG_TOP_LEVEL_ONLY
@@ -17,6 +17,7 @@ class VirtualDesktopEnhancerCore:
         self.last_desktop_idx : int = get_current_desktop_number()
         self.match_configs: List[WindowMatchConfig] = []
         self.window_infos: List[WindowInfo] = []
+        self.pinned_windows: List[WindowInfo] = []
         self.monitoring: bool = False
 
         # App related
@@ -63,6 +64,8 @@ class VirtualDesktopEnhancerCore:
                 if window.get_is_matched_for_config(config):
                     window.matched = True
                     break
+
+        self.pinned_windows = [info for info in self.window_infos if info.pinned]
 
     def on_desktop_changed(self):
         current_desktop_idx = get_current_desktop_number()
@@ -126,6 +129,18 @@ class VirtualDesktopEnhancerCore:
                 move_window_to_desktop(hwnd, index)
             self.last_desktop_idx = index
         return True
+    
+    def toggle_pin_window(self, window_info: WindowInfo):
+        pinned = get_window_is_pinned(window_info.hwnd)
+        if pinned:
+            set_window_unpin(window_info.hwnd)
+            window_info.pinned = False
+            self.pinned_windows.remove(window_info)
+        else:
+            set_window_pin(window_info.hwnd)
+            window_info.pinned = True
+            self.pinned_windows.append(window_info)
+        window_info.refresh_window_info_from_hwnd(window_info.hwnd)
 
 
     def run(self):
@@ -138,3 +153,10 @@ class VirtualDesktopEnhancerCore:
         self.vde_window.show()
 
         sys.exit(self.qapp.exec_())
+
+    def unpin_all_windows(self):
+        for window in self.pinned_windows:
+            set_window_unpin(window.hwnd)
+            window.pinned = False
+            window.refresh_window_info_from_hwnd(window.hwnd)
+        self.pinned_windows = []

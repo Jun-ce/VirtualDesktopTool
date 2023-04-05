@@ -11,7 +11,7 @@ import pywinauto.win32structures as win32structures
 import win32gui
 import win32process
 import ctypes
-from VirtualDesktopAccessor import get_window_desktop_number
+from VirtualDesktopAccessor import *
 from LP_Wrapper import lp_wrapper
 import line_profiler
 
@@ -77,7 +77,6 @@ class WindowMatchConfig:
         if not self.active:
             return False
         return window_info.get_is_matched_for_config(self)
-    
 
 
 # 所有窗口和他们的标题、类名、进程名、应用程序名、以及是否满足当前"Match Window"中的任意匹配条件
@@ -90,15 +89,19 @@ class WindowInfo:
         self.package_name: str = None
         self.process_id: str = None
         self.app_name: str = None
-        self.matched: bool = matched
         self.valid: bool = False
         self.current_desktop_idx: int = None
-        self.set_window_info_from_hwnd(hwnd)
+        self.matched: bool = matched
+        self.pinned: bool = False
+        self.refresh_window_info_from_hwnd(hwnd)
 
     # @lp_wrapper
-    def set_window_info_from_hwnd(self, hwnd: int) -> None:
+    def refresh_window_info_from_hwnd(self, hwnd: int) -> None:
         # try:
         self.window_class = win32gui.GetClassName(hwnd)
+        if self.window_class is None or self.window_class == '':
+            self.valid = False
+            return
         self.is_UWP = self.window_class in ['Windows.UI.Core.CoreWindow', 'ApplicationFrameWindow']
 
         if self.window_class == 'Windows.UI.Core.CoreWindow':
@@ -112,33 +115,53 @@ class WindowInfo:
 
         # 为了能匹配到最小化的 UWP 窗口，必须采用 Core Window 的标题，这可能和用户看到的标题不一致，例如 Core Window 的标题为 "Calander" 的应用，显示的标题是 "Month View - Calender"，这个标题只有沙盒窗口才有        
         self.title = win32gui.GetWindowText(hwnd)
+        
+        if self.title is None or self.title == '': # 隐藏窗口的情况
+            self.valid = False
+            return
+            # raise Exception(f'获取窗口信息无效，标题为空，hex_hwnd={hex(hwnd)}')
 
         if self.is_UWP:
             self.process_id = get_UWP_core_pid(hwnd)
             self.package_name = package_full_name_from_handle(get_UWP_core_hwnd(hwnd))
         else:
             _thread_id, self.process_id = win32process.GetWindowThreadProcessId(hwnd)
-
-        self.current_desktop_idx = get_window_desktop_number(hwnd)
         
         if self.process_id is None or self.process_id <= 0:
             self.valid = False
             return
             # raise Exception(f'获取窗口信息无效，进程信息失效，hex_hwnd={hex(hwnd)}')
+        
+        has_pin_info = False
 
+        try:
+            self.pinned = get_window_is_pinned(hwnd)
+            has_pin_info = True
+        except Exception as e:
+            pass
+
+        if not has_pin_info:
+            self.valid = False
+            return
+
+        try:
+            self.current_desktop_idx = get_window_desktop_number(hwnd)
+        except Exception as e:
+            pass
+        self.valid = True
         if self.current_desktop_idx is not None:
             self.valid = True
-            if self.current_desktop_idx <= 0:
+            if self.current_desktop_idx < 0 and not self.pinned:
                 self.valid = False
                 return
                 # raise Exception(f'窗口信息虚拟桌面信息获取无效，hex_hwnd={hex(hwnd)}，虚拟桌面ID {self.current_desktop_idx}')
         else:
             self.valid = False
             return
-            # raise Exception(f'获取窗口信息无效，hex_hwnd={hex(hwnd)}')
+            raise Exception(f'获取窗口信息无效，hex_hwnd={hex(hwnd)}')
+
 
         self.app_name = get_app_name_from_hwnd(hwnd)
-        self.current_desktop_idx = get_window_desktop_number(hwnd)
 
     def get_is_matched_for_config(self, config: WindowMatchConfig) -> bool:
         if not config.active:
