@@ -550,5 +550,6 @@ class VirtualDesktopEnhancerWindow(QMainWindow):
         self.refresh_window_list_content()
 
     def on_refresh_button_clicked(self):
+        self.core.refresh_all_windows() 
         self.refresh_window_list_content()
         self.current_vd_label.setText(f"Current Virtual Desktop: {get_current_desktop_number()} {get_desktop_name(get_current_desktop_number())}")
